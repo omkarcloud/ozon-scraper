@@ -1,0 +1,10 @@
+services:
+  ozon-scraper:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      # Optional — a STICKY proxy when Ozon shows your IP its captcha or block page.
+      # - OZON_PROXY=http://user:pass@host:port
