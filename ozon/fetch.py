@@ -39,6 +39,7 @@ Failure taxonomy (scraper_errors, mapped to HTTP by route_glue):
 """
 import itertools
 import json
+import fastjson
 import os
 import sys
 import threading
@@ -49,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import browser_client
 import config
+import egress
 from browser_client import BoxRefused, BoxUnavailable, RemintBudgetExceeded
 from scraper_errors import BadRequest, Blocked, NotFound, UpstreamError
 from ozon import parsers
@@ -107,7 +109,8 @@ def _screen(proxy):
     if proxy:
         sess.proxies = {"http": proxy, "https": proxy}
     try:
-        resp = sess.get(SCREEN_URL, headers={"accept-language": "ru-RU,ru;q=0.9", "accept": "application/json"},
+        resp = sess.get(SCREEN_URL, headers={"accept-language": egress.accept_language(proxy),
+                                             "accept": "application/json"},
                         timeout=SCREEN_TIMEOUT)
     except Exception as e:
         print(f"ozon: exit screen failed ({type(e).__name__}: {str(e)[:80]})")
@@ -230,13 +233,13 @@ def _drop_sessions():
 
 
 def _headers(entry, content_type=None):
-    out = {
-        "user-agent": entry["ident"]["user_agent"],
-        "accept": "application/json",
-        "accept-language": "ru-RU,ru;q=0.9,en;q=0.8",
-        "referer": f"{SITE}/",
-        "cookie": entry["cookie"],
-    }
+    # The replay announces what the minting browser announced (UA, client
+    # hints, Accept-Language of its exit): one identity, one language. The
+    # browser on a US datacenter exit says en-US, so the replay does too
+    # (owner decision 2026-10-29; before, the replay said ru-RU on the same
+    # cookies).
+    out = browser_client.headers_for(entry["ident"], accept="application/json", referer=f"{SITE}/")
+    out["cookie"] = entry["cookie"]
     if content_type:
         out["content-type"] = content_type
     return out
@@ -424,7 +427,7 @@ def fetch_category_children(category):
         if status == 400:
             raise OzonNotFound(f"category {category} not found")
         try:
-            payload = json.loads(text)
+            payload = fastjson.loads(text)
         except ValueError:
             raise OzonUpstreamError(f"HTTP {status}, non-JSON category children for {category}: {text[:120]!r}")
         if status != 200 or not isinstance(payload, dict):

@@ -246,6 +246,19 @@ def test_product_seller(iphone, socks):
     assert t["legal_address"] is None
 
 
+@pytest.mark.parametrize("lines", [
+    # Weissgauff's product page, 2026-10-26: labelled ОГРН and address lines ...
+    ["ОГРН - 1177746995502", "Адрес - 121357, Россия, г. Москва, ул. Верейская, д. 29, стр. 134, ком. 56"],
+    # ... or both on one line.
+    ["ОГРН - 1177746995502, Адрес - 121357, Россия, г. Москва, ул. Верейская, д. 29, стр. 134, ком. 56"],
+])
+def test_split_legal_labelled_lines(lines):
+    legal, hours = P._split_legal(['ООО "ГАУФ РУС"', *lines, "Режим работы - согласно режиму работы Ozon"])
+    assert legal["legal_name"] == 'ООО "ГАУФ РУС"' and legal["registration_number"] == "1177746995502"
+    assert legal["legal_address"] == "121357, Россия, г. Москва, ул. Верейская, д. 29, стр. 134, ком. 56"
+    assert hours == "согласно режиму работы Ozon"
+
+
 def test_product_extras(iphone):
     assert iphone["other_offers"] == {"count": 24, "lowest_price": 151212}
     assert iphone["customs_duty_estimate"] == 24447

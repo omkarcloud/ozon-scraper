@@ -42,7 +42,7 @@ share / chat actions, installment promos ("без % до 10 января"), bank
 recommendation shelves (tileScrollDesktop, "Рекомендуем также"), SEO tag
 clouds (tagListModal / tagList) and the gallery tips.
 """
-import json
+import fastjson
 import re
 from datetime import date, datetime, timedelta, timezone
 
@@ -72,7 +72,7 @@ def load_page(raw):
     if not isinstance(raw, str) or not raw.lstrip().startswith("{"):
         return None
     try:
-        out = json.loads(raw)
+        out = fastjson.loads(raw)
     except ValueError:
         return None
     return out if isinstance(out, dict) else None
@@ -107,7 +107,7 @@ def _decode(value):
         return value
     if isinstance(value, str):
         try:
-            out = json.loads(value)
+            out = fastjson.loads(value)
         except ValueError:
             return None
         return out if isinstance(out, dict) else None
@@ -598,6 +598,10 @@ def _seller_slug(link):
 
 _LEGAL_ID_RE = re.compile(r"^\d{13,15}$")          # ОГРН (13) / ОГРНИП (15)
 _COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+# Some sellers' cards label the lines (Weissgauff, 2026-10-26):
+# "ОГРН - 1177746995502", "Адрес - 121357, Россия, г. Москва, …" — or both on one line.
+_LEGAL_ID_ADDRESS_RE = re.compile(r"^ОГРН(?:ИП)?\s*[-–—:]\s*(\d{13,15})\s*(?:,\s*Адрес\s*[-–—:]\s*(.+))?$", re.I)
+_LABELLED_ADDRESS_RE = re.compile(r"^Адрес\s*[-–—:]\s*(.+)$", re.I)
 
 
 def _split_legal(lines):
@@ -612,7 +616,15 @@ def _split_legal(lines):
     hours = None
     rest = []
     for line in lines:
-        if line.lower().startswith("режим работы"):
+        combined = _LEGAL_ID_ADDRESS_RE.match(line)
+        address = _LABELLED_ADDRESS_RE.match(line)
+        if combined:
+            legal["registration_number"] = combined.group(1)
+            if combined.group(2):
+                legal["legal_address"] = combined.group(2).strip()
+        elif address:
+            legal["legal_address"] = address.group(1).strip()
+        elif line.lower().startswith("режим работы"):
             hours = re.sub(r"^режим работы\s*[—–-]\s*", "", line, flags=re.I) or line
         elif "честный знак" in line.lower():
             legal["is_honest_sign_registered"] = True
@@ -624,7 +636,7 @@ def _split_legal(lines):
             rest.append(line)
     if rest:
         legal["legal_name"] = rest[0]
-    if len(rest) > 1:
+    if len(rest) > 1 and not legal["legal_address"]:
         legal["legal_address"] = ", ".join(rest[1:])
     return legal, hours
 
